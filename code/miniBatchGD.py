@@ -18,15 +18,20 @@ class MiniBatchGD():
         self.lamda = GDparams[3]
         self.eta = GDparams[2]
         
+    """ Normalize """       
+        
     """ Training functions """
 
     def ScoreClassifier(self):
-        self.S = (self.W).dot(self.X) + np.transpose(self.b * np.ones(((self.X).shape[1],1)))
+#        self.S = (self.W).dot(self.X) + np.transpose(self.b * np.ones(((self.X).shape[1],1)))
+        self.S = self.W@self.X + np.transpose(self.b * np.ones(((self.X).shape[1],1)))
         return self.S
     
     def Softmax(self):
         self.ScoreClassifier()
-        self.P = np.exp(self.S) / np.sum(np.exp(self.S), axis=0)
+#        self.P = np.exp(self.S) / np.sum(np.exp(self.S), axis=0)
+        self.P = np.exp(self.S - np.max(self.S, axis=0)) / \
+                np.exp(self.S - np.max(self.S, axis=0)).sum(axis=0)
         return self.P
     
     def ComputeGradients(self): 

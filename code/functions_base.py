@@ -6,7 +6,7 @@ def LoadBatch(filename):
     """ Copied from the dataset website """
     from scipy.io import loadmat
     with open('datasets/cifar-10-batches-mat/'+filename, 'rb') as fo:
-        dict = loadmat(fo)
+        dict = loadmat(fo)    
         X = np.transpose(dict['data'])
         y = np.transpose(dict['labels'])
         Y = np.zeros([10,X.shape[1]])
@@ -14,6 +14,17 @@ def LoadBatch(filename):
             Y[y[0,i],i] = 1
     return [X,Y,y]
 
+#def LoadBatchNormalizeSave(filename):
+#    """ Copied from the dataset website """
+#    import scipy.io as sio
+#    with open('datasets/cifar-10-batches-mat/'+filename, 'rb') as fo:
+#        dict = sio.loadmat(fo)    
+#        X = dict['data']
+#        X = Normalize(X)
+#        dict['data'] = X
+#        sio.savemat('datasets/cifar-10-batches-mat/' 'norm_' + filename, dict)
+        
+        
 def ComputeGradsNum(X, Y, W, b, lamda, h):
 	""" Converted from matlab code """
 	no 	= 	W.shape[0]
@@ -41,6 +52,15 @@ def ComputeGradsNum(X, Y, W, b, lamda, h):
 			grad_W[i,j] = (c2-c) / h
 
 	return [grad_W, grad_b]
+
+def Normalize(X):
+    mean_X = np.mean(X, axis=1)
+    std_X = np.std(X, axis=1)
+    
+    X = X - np.transpose(np.matlib.repmat(mean_X, X.shape[1], 1))
+    X = X / np.transpose(np.matlib.repmat(std_X, X.shape[1], 1))
+    return X
+    
 
 def ComputeGradsNumSlow(X, Y, W, b, lamda, h):
 	""" Converted from matlab code """
@@ -75,7 +95,7 @@ def ComputeGradsNumSlow(X, Y, W, b, lamda, h):
 
 	return [grad_W, grad_b]
 
-def montage(typ,W,range1,range2, param, name):
+def montage(typ,W,range1,range2, param, name, Class):
     """ Display the image for each label in W """
     import matplotlib.pyplot as plt
     if typ == "photo":
@@ -96,11 +116,11 @@ def montage(typ,W,range1,range2, param, name):
             sim = (im-np.min(im[:]))/(np.max(im[:])-np.min(im[:]))
             sim = sim.transpose(1,0,2)
             ax[i].imshow(sim, interpolation='nearest')
-            ax[i].set_title("y="+str(i))
+            ax[i].set_title(Class[i], fontsize=6)
             ax[i].axis('off')
     plt.show()
 
-def save_as_mat(data, name="model"):
+def save_as_mat(data, name, dic):
 	""" Used to transfer a python model to matlab """
 	import scipy.io as sio
-	sio.savemat(name,'.mat',{name:b})
+	sio.savemat('test_save', {'X':X, 'Y':Y, 'y':y})
