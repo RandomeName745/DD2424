@@ -1,6 +1,22 @@
-import numpy as np
-import miniBatchGD as mBGD
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Mar 25 18:07:15 2020
 
+@author: Alexander Polidar
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+""" Collection of some functions 
+
+    Fns
+        Loading
+        Normalization
+        Plotting
+
+"""
 
 def LoadBatch(filename):
     """ Copied from the dataset website """
@@ -14,44 +30,25 @@ def LoadBatch(filename):
             Y[y[0,i],i] = 1
     return [X,Y,y]
 
-#def LoadBatchNormalizeSave(filename):
-#    """ Copied from the dataset website """
-#    import scipy.io as sio
-#    with open('datasets/cifar-10-batches-mat/'+filename, 'rb') as fo:
-#        dict = sio.loadmat(fo)    
-#        X = dict['data']
-#        X = Normalize(X)
-#        dict['data'] = X
-#        sio.savemat('datasets/cifar-10-batches-mat/' 'norm_' + filename, dict)
-        
-        
-def ComputeGradsNum(X, Y, W, b, lamda, h):
-	""" Converted from matlab code """
-	no 	= 	W.shape[0]
-	d 	= 	X.shape[0]
+def LoadLabelNames():
+    from scipy.io import loadmat
+    with open('datasets/cifar-10-batches-mat/batches.meta.mat', 'rb') as fo:
+        dict = loadmat(fo) 
+        label_name_dict = dict['label_names']
+        label_names = {}
+        for i in range(label_name_dict.shape[0]):
+            label_names[i] = label_name_dict[i][0][0]
+    return label_names
 
-	grad_W = np.zeros(W.shape);
-	grad_b = np.zeros((no, 1));
-
-	test_num = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W, b);test_num.Softmax();[l,c] = test_num.ComputeCost()
-    
-    #c = ComputeCost(X, Y, W, b, lamda)
-	
-    
-	for i in range(len(b)):
-		b_try = np.array(b)
-		b_try[i] += h;test_num2 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W, b_try);test_num2.Softmax();[l2,c2] = test_num2.ComputeCost()
-#		c2 = ComputeCost(X, Y, W, b_try, lamda)
-		grad_b[i] = (c2-c) / h
-
-	for i in range(W.shape[0]):
-		for j in range(W.shape[1]):
-			W_try = np.array(W)
-			W_try[i,j] += h;test_num2 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W_try, b);test_num2.Softmax();[l2,c2] = test_num2.ComputeCost()
-#			c2 = ComputeCost(X, Y, W_try, b, lamda)
-			grad_W[i,j] = (c2-c) / h
-
-	return [grad_W, grad_b]
+def LoadBatchNormalizeSave(filename):
+    """ Copied from the dataset website """
+    import scipy.io as sio
+    with open('datasets/cifar-10-batches-mat/'+filename, 'rb') as fo:
+        dict = sio.loadmat(fo)    
+        X = dict['data']
+        X = Normalize(X)
+        dict['data'] = X
+        sio.savemat('datasets/cifar-10-batches-mat/' 'norm_' + filename, dict)
 
 def Normalize(X):
     mean_X = np.mean(X, axis=1)
@@ -62,40 +59,7 @@ def Normalize(X):
     return X
     
 
-def ComputeGradsNumSlow(X, Y, W, b, lamda, h):
-	""" Converted from matlab code """
-	no 	= 	W.shape[0]
-	d 	= 	X.shape[0]
-
-	grad_W = np.zeros(W.shape);
-	grad_b = np.zeros((no, 1));
-	
-	for i in range(len(b)):
-		b_try = np.array(b)
-		b_try[i] -= h;test_num1 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W, b_try);test_num1.Softmax();[l1,c1] = test_num1.ComputeCost()
-#		c1 = ComputeCost(X, Y, W, b_try, lamda)
-
-		b_try = np.array(b)
-		b_try[i] += h;test_num2 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W, b_try);test_num2.Softmax();[l2,c2] = test_num2.ComputeCost()
-#		c2 = ComputeCost(X, Y, W, b_try, lamda)
-
-		grad_b[i] = (c2-c1) / (2*h)
-
-	for i in range(W.shape[0]):
-		for j in range(W.shape[1]):
-			W_try = np.array(W)
-			W_try[i,j] -= h;test_num1 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W_try, b);test_num1.Softmax();[l1,c1] = test_num1.ComputeCost()
-#			c1 = ComputeCost(X, Y, W_try, b, lamda)
-
-			W_try = np.array(W)
-			W_try[i,j] += h;test_num2 = mBGD.MiniBatchGD(X, Y, [], [0, 0, 0, lamda], W_try, b);test_num2.Softmax();[l2,c2] = test_num2.ComputeCost()
-#			c2 = ComputeCost(X, Y, W_try, b, lamda)
-#
-			grad_W[i,j] = (c2-c1) / (2*h)
-
-	return [grad_W, grad_b]
-
-def montage(typ,W,range1,range2, param, name, Class):
+def montage(typ,W,range1,range2, num_set, name, Class, savefig = False):
     """ Display the image for each label in W """
     import matplotlib.pyplot as plt
     if typ == "photo":
@@ -110,7 +74,7 @@ def montage(typ,W,range1,range2, param, name, Class):
                 ax[i][j].axis('off')
     if typ == "weight":        
         fig, ax = plt.subplots(range2,range1)
-        fig.canvas.set_window_title(name + ' - Weight matrix: parameter-set ' + str(param))
+        fig.canvas.set_window_title(str(num_set) + "_" + typ + "_" + name)
         for i in range(range1):
             im  = W[i,:].reshape(32,32,3, order='F')
             sim = (im-np.min(im[:]))/(np.max(im[:])-np.min(im[:]))
@@ -119,6 +83,23 @@ def montage(typ,W,range1,range2, param, name, Class):
             ax[i].set_title(Class[i], fontsize=6)
             ax[i].axis('off')
     plt.show()
+    if savefig:
+        plt.savefig("plots/" + str(num_set) + "_" + typ + "_" + name + ".pdf",
+                    bbox_inches="tight")
+
+def plot(figname, num_set, xdata, ydata, label_is, xlim_is, ylim_is, xlabel_is, ylabel_is, savefig = False):
+    plt.figure(str(num_set) + "_" + figname)
+    for i in range(len(ydata)):
+        plt.plot(xdata, ydata[i], label = label_is[i])
+#    plt.xlim(xlim_is)
+#    plt.ylim(ylim_is)    
+    plt.xlabel(xlabel_is)
+    plt.ylabel(ylabel_is)
+    plt.legend()
+    plt.grid(b=True)
+    if savefig:
+        plt.savefig("plots/" + str(num_set) + "_" + figname + ".pdf",
+                    bbox_inches="tight")
 
 def save_as_mat(data, name, dic):
 	""" Used to transfer a python model to matlab """
