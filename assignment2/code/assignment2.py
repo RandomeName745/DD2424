@@ -13,13 +13,25 @@ import ClassifierMiniBatchGD as CMBGD
 import unittest
 
 ###############################################################################
-"""SETUP"""
+""" SETUP """
 ###############################################################################
 
 """ Settings 
+        search_grid:    conduct a grid search? (boolean)
+        z_min:          minimum exponent for lambda = 10^z
+        z_max:          maximum exponent for lambda = 10^z
+
+        M:              no. of nodes in the hidden layer
+        
         n_it:           no. of iterations of mini-batch gradient descent: determining mean and std of accuracies
+
+        cyclic_lr:      apply cyclic learning rate? (boolean)
+        n_s:            2n_s: number of update steps per cycle
+        n_c:            no. of cycles
+
         
         set2eval:       choose datasets to load and evaluate, if len(set2eval) > 1: stacking of datasets
+        N_val:          no. of training
         GDparams2eval:  choose parameter sets to evaluate
         
         n_batch:        number of batches in dataset
@@ -29,24 +41,42 @@ import unittest
         plot_photos     set whether some data (photos) should be plotted (0/1)
         export_results  set whether results should be exported
                 
-        GDparams:       different sets of parameters of gradient descent: [lambda: regulization parameter, eta: step-size for gradient descent]       
+        GDparams:       different sets of parameters of gradient descent: 
+                        [lambda: regulization parameter, 
+                        eta: step-size for gradient descent 
+                        [eta_min, eta_max] for cyclic learning rate]       
 """
+# grid search
+search_grid = False
+z_min = -2.5
+z_max = -1.8
+
+# setting up network
+M = 50
 
 # no. of iterations
-n_it = 10
+n_it = 1
 
 # choose sets and parameters to evaluate
-set2eval = [1]  
-GDparams2eval = [0,1,2,3]#[0, 1, 2, 3]     # choose with which paramter sets to run
+set2eval = [1,2,3,4,5]  
+N_val = 1000
+GDparams2eval = [0]# np.arange(0,20)#[1]#,2,3]#[0, 1, 2, 3]     # choose with which paramter sets to run
 
 # mini-batch gradient descent
 n_batch = 100
-n_epoch = 40
+
+# cyclic learning rate?
+cyclic_lr = True
+n_s = 2*np.floor((len(set2eval)*10000-N_val)/n_batch)
+n_c = 1
+
+# calc no. of epochs
+n_epoch = int(2*(n_s/n_batch)*n_c)
 
 # plotting of results
-plot_results = 1
-plot_photos = 0
-export_results = 0
+plot_results = True
+plot_photos = False
+export_results = False
 
 # parameter settings
 GDparams = [[0,     .1],
@@ -54,7 +84,17 @@ GDparams = [[0,     .1],
             [.1,    .001],
             [1,     .001]]
 
-
+if cyclic_lr == True and search_grid == False:
+    GDparams = [[0.00711462,     [1e-5,   1e-1]],
+                [0,     [1e-5,   1e-1]],
+                [.01,    [1e-5,   1e-1]],
+                [1,     [1e-5,   1e-1]]]
+elif cyclic_lr == True and search_grid == True:
+    GDparams = []
+    for i in range(len(GDparams2eval)):
+        z = z_min + (z_max - z_min)*np.random.random()
+        GDparams.append([np.power(10,z), [1e-5, 1e-1]])
+    GDparams.sort()
 ###############################################################################
 """Pre-definitions"""
 ###############################################################################
@@ -65,6 +105,8 @@ L_train = np.zeros((n_epoch, len(GDparams2eval)))
 J_train = np.zeros((n_epoch, len(GDparams2eval)))
 L_val = np.zeros((n_epoch, len(GDparams2eval)))
 J_val = np.zeros((n_epoch, len(GDparams2eval)))
+
+eta_s = np.zeros((n_epoch*n_batch, len(GDparams2eval)))
 
 acc_train = np.zeros((n_epoch, len(GDparams2eval)))
 acc_val = np.zeros((n_epoch, len(GDparams2eval)))
@@ -80,7 +122,6 @@ acc_test_mean = list([])
 acc_train_std = list([])
 acc_val_std = list([])
 acc_test_std = list([])
-
 
 train_acc = np.zeros((len(GDparams),n_it))
 train_acc[:] = np.nan
@@ -110,7 +151,6 @@ for s in range(len(set2eval)):
 if len(set2eval) == 1:
     [X_val,Y_val,y_val] = fb.LoadBatch('norm_data_batch_2.mat')        
 else:   
-    N_val = 1000
     [X_val,Y_val,y_val] = [X_train[:,-N_val:],Y_train[:,-N_val:],y_train[:,-N_val:]]
     [X_train,Y_train,y_train] = [X_train[:,:-N_val],Y_train[:,:-N_val],y_train[:,:-N_val]]
     
@@ -134,7 +174,7 @@ data = {
 
 label_names = fb.LoadLabelNames()
 
-clfr = CMBGD.ClassifierMiniBatchGD(data, label_names)
+clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M)
 
 ###############################################################################
 """ Unittest classifier """
@@ -142,25 +182,34 @@ clfr = CMBGD.ClassifierMiniBatchGD(data, label_names)
     
 if __name__ == '__main__':            
     class Testing(unittest.TestCase):   
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names)
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M)
         
         def test_0_sizes(self):
             np.testing.assert_equal(np.shape(self.clfr.X_train), (3072, 10000), err_msg='Training data')
             np.testing.assert_equal(np.shape(self.clfr.Y_train), (10, 10000), err_msg='One-hot-encoded label-matrix')
             np.testing.assert_equal(np.shape(self.clfr.y_train), (1,10000), err_msg='Labels')
-            np.testing.assert_equal(np.shape(self.clfr.softmax(X_train)), (10,10000), err_msg='Output of softmax: Probability matrix P')
+            np.testing.assert_equal(np.shape(self.clfr.W[0]), (self.clfr.M,3072), err_msg='W1')
+            np.testing.assert_equal(np.shape(self.clfr.W[1]), (10,self.clfr.M), err_msg='W2')
+            np.testing.assert_equal(np.shape(self.clfr.evaluate_classifier(X_train)[0]), (10,10000), err_msg='Output of softmax: Probability matrix P')
             np.testing.assert_almost_equal(np.sum(self.clfr.softmax(X_train), axis=0), 1, decimal = 6, err_msg='Sum of probabilities != 1')                
             
         def test_1_gradients(self):
-            self.clfr.W = self.clfr.W[:,:20]
+            self.clfr.W[0] = self.clfr.W[0][:,:20]
+#            self.clfr.W[1] = self.clfr.W[1][:,:20]
             [grad_W, grad_b] = self.clfr.compute_gradients(self.clfr.X_train[:20,:100], self.clfr.Y_train[:,:100], lamda = 0)
             [grad_W_num, grad_b_num] = self.clfr.compute_gradients_num(self.clfr.X_train[:20,:100], self.clfr.Y_train[:,:100], lamda = 0)
-            np.testing.assert_almost_equal(grad_W, grad_W_num, decimal = 6, err_msg='Gradient calulcation (num/ana): W matrix not almost equal up to 6 decimals')
-            np.testing.assert_almost_equal(grad_b, grad_b_num, decimal = 6, err_msg='Gradient calulcation (num/ana): b vector not almost equal up to 6 decimals')
-            error_rel_W_max = np.max(np.abs(grad_W - grad_W_num)/np.maximum(1e-6, np.abs(grad_W) + np.abs(grad_W_num)))
-            error_rel_b_max = np.max(np.abs(grad_b - grad_b_num)/np.maximum(1e-6, np.abs(grad_b) + np.abs(grad_b_num)))
-            print('Maximum relative error between numerical and analytical calculation of W: ' + str("{:.6f}".format(error_rel_W_max*100)) + ' %')
-            print('Maximum relative error between numerical and analytical calculation of b: ' + str("{:.6f}".format(error_rel_b_max*100)) + ' %')
+            np.testing.assert_almost_equal(grad_W[0], grad_W_num[0], decimal = 6, err_msg='Gradient calulcation (num/ana): W1 matrix not almost equal up to 6 decimals')
+            np.testing.assert_almost_equal(grad_b[0], grad_b_num[0], decimal = 6, err_msg='Gradient calulcation (num/ana): b1 vector not almost equal up to 6 decimals')
+            np.testing.assert_almost_equal(grad_W[1], grad_W_num[1], decimal = 6, err_msg='Gradient calulcation (num/ana): W2 matrix not almost equal up to 6 decimals')
+            np.testing.assert_almost_equal(grad_b[1], grad_b_num[1], decimal = 6, err_msg='Gradient calulcation (num/ana): b2 vector not almost equal up to 6 decimals')
+            error_rel_W1_max = np.max(np.abs(grad_W[0] - grad_W_num[0])/np.maximum(1e-6, np.abs(grad_W[0]) + np.abs(grad_W_num[0])))
+            error_rel_b1_max = np.max(np.abs(grad_b[0] - grad_b_num[0])/np.maximum(1e-6, np.abs(grad_b[0]) + np.abs(grad_b_num[0])))
+            error_rel_W2_max = np.max(np.abs(grad_W[1] - grad_W_num[1])/np.maximum(1e-6, np.abs(grad_W[1]) + np.abs(grad_W_num[1])))
+            error_rel_b2_max = np.max(np.abs(grad_b[1] - grad_b_num[1])/np.maximum(1e-6, np.abs(grad_b[1]) + np.abs(grad_b_num[1])))
+            print('Maximum relative error between numerical and analytical calculation of W1: ' + str("{:.6f}".format(error_rel_W1_max*100)) + ' %')
+            print('Maximum relative error between numerical and analytical calculation of b1: ' + str("{:.6f}".format(error_rel_b1_max*100)) + ' %')
+            print('Maximum relative error between numerical and analytical calculation of W2: ' + str("{:.6f}".format(error_rel_W2_max*100)) + ' %')
+            print('Maximum relative error between numerical and analytical calculation of b2: ' + str("{:.6f}".format(error_rel_b2_max*100)) + ' %')
                 
     # Unit testing
     unittest.TestLoader.sortTestMethodsUsing = None
@@ -177,8 +226,8 @@ for i in range(len(GDparams2eval)):
     np.random.seed(0)
     
     for n in range(n_it):
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names)
-        [W_star, acc_train[:,i], acc_val[:,i], acc_test[:,i], L_train[:,i], J_train[:,i], L_val[:,i], J_val[:,i]] = clfr.mini_batch_gd(
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M)
+        [W_star, acc_train[:,i], acc_val[:,i], acc_test[:,i], L_train[:,i], J_train[:,i], L_val[:,i], J_val[:,i], eta_s[:,i]] = clfr.mini_batch_gd(
                                                                     X_train,
                                                                     Y_train,
                                                                     y_train,
@@ -186,7 +235,9 @@ for i in range(len(GDparams2eval)):
                                                                     GDparams[GDparams2eval[i]][1],
                                                                     n_batch,
                                                                     n_epoch,
-                                                                    eval_performance = True)
+                                                                    n_s,
+                                                                    eval_performance = True,
+                                                                    eta_is_cyclic = cyclic_lr)
         
         [acc_train_end[n,i], acc_val_end[n,i], acc_test_end[n,i]]= [acc_train[-1,i], acc_val[-1,i], acc_test[-1,i]]
     
@@ -213,7 +264,7 @@ for i in range(len(GDparams2eval)):
                 str(GDparams2eval[i]), 
                 np.arange(L_train.shape[0])+1,
                 [L_train[:,i], L_val[:,i]], 
-                [Name[s], Name[1]], 
+                [Name[0], Name[1]], 
                 (1,GDparams[GDparams2eval[i]][1]), 
                 (1.5,2.5), 
                 'Number of epochs',
@@ -224,7 +275,7 @@ for i in range(len(GDparams2eval)):
                 str(GDparams2eval[i]),
                 np.arange(L_train.shape[0])+1,
                 [J_train[:,i], J_val[:,i]],
-                [Name[s], Name[1]],
+                [Name[0], Name[1]],
                 (1,GDparams[GDparams2eval[i]][1]),
                 (1.5,2.5),
                 'Number of epochs',
@@ -242,7 +293,7 @@ for i in range(len(GDparams2eval)):
                 'Accuracy',
                 savefig = export_results)    
         
-        fb.montage("weight", W_star, 10, 1, GDparams2eval[i], Name[s], label_names, savefig = export_results)
+        fb.montage("weight", W_star[0], 10, 1, GDparams2eval[i], Name[s], label_names, savefig = export_results)
         
 
 
@@ -253,3 +304,9 @@ for i in range(len(GDparams2eval)):
 """ Show photos"""
 if plot_photos:
     fb.montage('photo', X_train, 3, 5, [], [], [])     
+if search_grid:    
+    lamda = []
+    for i in range(len(GDparams)): 
+        lamda.append(GDparams[i][0])
+        
+    grid_out = np.stack((np.array(lamda,ndmin=2), acc_train_end, acc_val_end), axis=1)

@@ -74,6 +74,10 @@ def Normalize(X):
 def montage(typ,W,range1,range2, num_set, name, Class, savefig = False):
     """ Display the image for each label in W """
     import matplotlib.pyplot as plt
+    from os.path import expanduser
+    from pathlib import Path
+    home = expanduser("~")
+    home = str(Path.home())
     if typ == "photo":
         fig, ax = plt.subplots(range1,range2)
         for i in range(range1):
@@ -96,10 +100,14 @@ def montage(typ,W,range1,range2, num_set, name, Class, savefig = False):
             ax[i].axis('off')
     plt.show()
     if savefig:
-        plt.savefig("plots/" + str(num_set) + "_" + typ + "_" + name + ".pdf",
+        plt.savefig(home  + '/anaconda3/envs/standard/DD2424/git/DD2424/assignment2/plots/' + str(num_set) + "_" + typ + "_" + name + ".pdf",
                     bbox_inches="tight")
 
 def plot(figname, num_set, xdata, ydata, label_is, xlim_is, ylim_is, xlabel_is, ylabel_is, savefig = False):
+    from os.path import expanduser
+    from pathlib import Path
+    home = expanduser("~")
+    home = str(Path.home())
     plt.figure(str(num_set) + "_" + figname)
     for i in range(len(ydata)):
         plt.plot(xdata, ydata[i], label = label_is[i])
@@ -110,7 +118,7 @@ def plot(figname, num_set, xdata, ydata, label_is, xlim_is, ylim_is, xlabel_is, 
     plt.legend()
     plt.grid(b=True)
     if savefig:
-        plt.savefig("plots/" + str(num_set) + "_" + figname + ".pdf",
+        plt.savefig(home  + '/anaconda3/envs/standard/DD2424/git/DD2424/assignment2/plots/' + str(num_set) + "_" + figname + ".pdf",
                     bbox_inches="tight")
 
 def save_as_mat(data, name, dic):
