@@ -23,7 +23,7 @@ class ClassifierMiniBatchGD():
                 compute_accuracy        Computes the accuracy of the classifier with learned parameters
     """
     
-    def __init__(self, data, label_names, M, layers, W=None, b=None):
+    def __init__(self, data, label_names, M, layers, init_type, batch_norm, W=None, b=None):
         """ Initialize Class with parameters W and b
         
         Args:
@@ -45,21 +45,35 @@ class ClassifierMiniBatchGD():
         self.label_names = label_names
         self.M = M
         self.k_num = len(layers)
+        self.init_type = init_type
+        self.batch_norm = batch_norm
             
         """ Initialize W and b with mean = 0, std = 0.01, size=(dim0: # of labels, dim1: pixel data)"""
         
         self.W = []
         self.b = []
+        self.beta = []
+        self.gamma = []
         self.activations = []
         
+        # Create initialization arrays for parameters W, b(), beta, gamma)
         for l in layers.values():
             for k, v in l.items():          # k: field identifier, v: field value
                 if k == 'shape':
-                    W, b = self.init_params(v)   # v: shape of layer l
+                    W, b, beta, gamma = self.init_params(v, self.init_type)   # v: shape of layer l
                     self.W.append(W)
                     self.b.append(b)
+                    self.beta.append(beta)
+                    self.gamma.append(gamma)
                 elif k == 'activation':
                     self.activations.append(v)  # v: activation function (str)
+                    
+        # Create dictionary with gradients for each parameter
+        if self.batch_norm:
+            self.params = {'W': self.W, 'b': self.b, 'beta': self.beta, 'gamma': self.gamma}
+        else:
+            self.params = {'W': self.W, 'b': self.b}
+                    
         
         # # Initialize first layer
         # self.W = W if W != None else [np.random.normal(0, 1/np.sqrt(self.X_train.shape[0]), (self.M, self.X_train.shape[0]))]   # W1 (M, D)
@@ -72,10 +86,17 @@ class ClassifierMiniBatchGD():
             
     """ Define parameter initialization """       
             
-    def init_params(self, shape):
-        W = (np.random.normal(0, 1/np.sqrt(shape[1]), size = (shape[0], shape[1])))
+    def init_params(self, shape, init_type):
+        if init_type == 'He':
+            W = (np.random.normal(0, 1/np.sqrt(shape[1]), size = (shape[0], shape[1])))
+        elif init_type == 'Xavier':
+            W = (np.random.normal(0, 2/np.sqrt(shape[1]), size = (shape[0], shape[1])))
+        else:
+            print('error: no proper weight initialization method chosen')            
         b = np.zeros((shape[0], 1))
-        return W, b
+        beta = np.zeros((shape[0], 1))
+        gamma = np.zeros((shape[0], 1))
+        return W, b, beta, gamma
             
     """ Training functions """
     
@@ -146,11 +167,11 @@ class ClassifierMiniBatchGD():
                 # compute learning rate for current update-step t:
                 eta_s[t-1], l = self.cyclic_learningrate(eta, n_s, l, t)
                 
-                [grad_W, grad_b] = self.compute_gradients(X_batch, Y_batch, lamda)
+                grad = self.compute_gradients(X_batch, Y_batch, lamda)
                 
                 # compute delta of parameters for step
-                delta_W = np.multiply(-eta_s[t-1], grad_W)
-                delta_b = np.multiply(-eta_s[t-1], grad_b)
+                delta_W = np.multiply(-eta_s[t-1], grad['W'])
+                delta_b = np.multiply(-eta_s[t-1], grad['b'])
                 for i in range(len(delta_b)):
                     delta_b[i] = delta_b[i].reshape((-1,1)) # reshape from (dim0, ,) to (dim0, 1)
                     
@@ -188,21 +209,19 @@ class ClassifierMiniBatchGD():
                 np.exp(S - np.max(S, axis=0)).sum(axis=0)
         return P
      
-    def evaluate_classifier(self, X):    
+    def evaluate_classifier(self, P, S, l):    
         """ Scores learned classifier w.r.t. weight matrix and bias vector: log probability
         Args:
             X (np.ndarray): data matrix (D, N)
         Returns log probabilities of classification
         """
-        S = []
-        X = [X]
-        for l in range(0,self.k_num):
-            S.append(self.W[l]@X[l] + self.b[l])  # score
-            if self.activations[l] == 'relu':
-                X.append(self.relu(S[l]))                # activation function
-            elif self.activations[l] == 'softmax':
-                P = self.softmax(S[l])                # probability
-        return P, X
+        if self.activations[l] == 'relu':
+            S.append(self.relu(self.W[l]@S[l] + self.b[l]))     # activation function
+            # Shat.append(np.diag(mu[l]))
+            return [P, S]
+        elif self.activations[l] == 'softmax':
+            P = self.softmax(self.W[l]@S[l] + self.b[l])        # probability
+            return [P, S]
         
     """ Backward Path
     Fns
@@ -210,7 +229,7 @@ class ClassifierMiniBatchGD():
         compute_gradients_num()
     """   
     
-    def compute_gradL(self, X_batch, G, n_b):
+    def compute_gradL(self, X_batch, G, n_b, gradL, l):
         """ Analytically computes the gradients of the loss w.r.t. the weight and bias parameters
         Args:
            
@@ -221,14 +240,11 @@ class ClassifierMiniBatchGD():
             gradL_W (np.ndarray): the gradient of the loss w.r.t. the weight parameter
             gradL_b (np.ndarray): the gradient of the loss w.r.t. the bias parameter
         """
-        gradL_W = [[],[],[]]
-        gradL_b = [[],[],[]]
-        for l in range(self.k_num-1, -1, -1):
-            gradL_W[l] = (1/n_b) * G@np.transpose(X_batch[l])
-            gradL_b[l] = (1/n_b) * G@np.ones(n_b)
-            G = np.transpose(self.W[l])@G
-            G = np.multiply(G, X_batch[l] > 0)
-        return [gradL_W, gradL_b]
+        gradL['W'][l] = (1/n_b) * G@np.transpose(X_batch[l])
+        gradL['b'][l] = (1/n_b) * G@np.ones(n_b)
+        G = np.transpose(self.W[l])@G
+        G = np.multiply(G, X_batch[l] > 0)
+        return [gradL, G]
     
     def compute_gradients(self, X_batch, Y_batch, lamda): 
         """ Analytically computes the gradients of the weight and bias parameters
@@ -241,18 +257,34 @@ class ClassifierMiniBatchGD():
             grad_b (np.ndarray): the gradient of the bias parameter
         """
         n_b = X_batch.shape[1] # number of images in dataset
+        S = [X_batch]
+        P = []
         
-        [P, X_batch] = self.evaluate_classifier(X_batch)
+        # Forward path
+        for l in range(0,self.k_num):
+            [P, S] = self.evaluate_classifier(P, S, l)
         
+        # Backward path
         G = -(Y_batch - P)
-        [gradL_W, gradL_b] = self.compute_gradL(X_batch, G, n_b)  # gradients for layers 2 to k           
+        
+        # gradL_W = []
+        # gradL_b = []
+        if self.batch_norm:
+            gradL = {'W': [], 'b': [], 'beta': [], 'gamma': []}
+        else:
+            gradL = {'W': [], 'b': []}
+        for l in range(self.k_num):
+            for key in self.params:
+                gradL[key].append([])
+        grad = {'W': [], 'b': []}
 
-        grad_W = []
-        grad_b = []
-        for l in range(len(self.W)):
-            grad_W.append(gradL_W[l] + 2*lamda*self.W[l])
-            grad_b.append(gradL_b[l])
-        return [grad_W, grad_b]
+        for l in range(self.k_num-1, -1, -1):
+            [gradL, G] = self.compute_gradL(S, G, n_b, gradL, l)  # gradients for layers 2 to k    
+            grad['W'].append(gradL['W'][l] + 2*lamda*self.W[l])
+            grad['b'].append(gradL['b'][l])
+        grad['W'].reverse()
+        grad['b'].reverse()
+        return grad
     
     def compute_gradients_num(self, X_batch, Y_batch, lamda, h=1e-6):
         """Numerically computes the gradients of the weight and bias parameters
@@ -265,33 +297,27 @@ class ClassifierMiniBatchGD():
             grad_W (np.ndarray): the gradient of the weight parameter
             grad_b (np.ndarray): the gradient of the bias parameter
         """
-        grad_W = [\
-                   np.zeros(self.W[0].shape),
-                   np.zeros(self.W[1].shape)
-                   ]
-        grad_b = [\
-                   np.zeros(self.b[0].shape),
-                   np.zeros(self.b[1].shape)
-                   ]
-
-        b_try = [\
-                 np.copy(self.b[0]),
-                 np.copy(self.b[1])
-                 ]
         
-        W_try = [\
-                 np.copy(self.W[0]),
-                 np.copy(self.W[1])
-                 ]
+        grad_num = {'W': [], 'b': []}
+        
+        b_try = []
+        W_try = []
+        
+        for k in range(len(self.b)):
+            grad_num['W'].append(np.zeros(self.W[k].shape))
+            grad_num['b'].append(np.zeros(self.b[k].shape))
+            W_try.append(self.W[k])
+            b_try.append(self.b[k])
+            
         for k in range(len(self.b)):
             for i in range(len(self.b[k])):
-                self.b = b_try
+                self.params['b'] = b_try
                 self.b[k][i] = self.b[k][i] + h
                 c2, _ = self.compute_cost(X_batch, Y_batch, lamda)
                 self.b[k][i] = self.b[k][i] - 2*h
                 c3, _ = self.compute_cost(X_batch, Y_batch, lamda)
-                grad_b[k][i] = (c2-c3) / (2*h)
-            grad_b[k] = np.squeeze(grad_b[k],axis=1)
+                grad_num['b'][k][i] = (c2-c3) / (2*h)
+            grad_num['b'][k] = np.squeeze(grad_num['b'][k],axis=1)
 
         for k in range(len(self.W)):
             for i in np.ndindex(self.W[k].shape):
@@ -300,9 +326,9 @@ class ClassifierMiniBatchGD():
                 c2, _ = self.compute_cost(X_batch, Y_batch, lamda)
                 self.W[k][i] = self.W[k][i] - 2*h
                 c3, _ = self.compute_cost(X_batch, Y_batch, lamda)
-                grad_W[k][i] = (c2-c3) / (2*h)
+                grad_num['W'][k][i] = (c2-c3) / (2*h)
 
-        return grad_W, grad_b
+        return grad_num
     
     """ Evaluate Training
     Fns
@@ -322,8 +348,13 @@ class ClassifierMiniBatchGD():
         """
         W_norm = []
         n_b = X.shape[1] # number of images in dataset
-            
-        [P,_] = self.evaluate_classifier(X)
+        
+        
+        # [P,_] = self.evaluate_classifier([], X, self.k_num-1)
+        P = []
+        X = [X]
+        for l in range(0,self.k_num):
+            [P, X] = self.evaluate_classifier(P, X, l)
         l_cross_sum = np.sum(-Y*np.log(P))
         L =  1/n_b * l_cross_sum                        # total loss
         for i in range(len(self.W)):
@@ -341,7 +372,10 @@ class ClassifierMiniBatchGD():
             acc    (float): the accuracy of the classification on the given data matrix X
         """
         
-        [P,_] = self.evaluate_classifier(X)
+        P = []
+        X = [X]
+        for l in range(0,self.k_num):
+            [P, X] = self.evaluate_classifier(P, X, l)       
         k_star = np.argmax(P, axis=0)               # label with highest probability
         acc = len(np.argwhere(k_star - y == 0)) / y.shape[1]
         return acc

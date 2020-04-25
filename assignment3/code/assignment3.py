@@ -52,15 +52,23 @@ z_min = -2.5
 z_max = -1.8
 
 # setting up network
+batch_norm = False
 M = 50
-k = 5
-[shapes, activations] = [[(50, 3072), (50, 50), (10, 50)], ["relu", "relu", "softmax"]]
+k = 3
+if k == 2:
+    [shapes, activations] = [[(50, 3072), (10, 50)], ["relu", "softmax"]]
+elif k == 3:
+    [shapes, activations] = [[(50, 3072), (50, 50), (10, 50)], ["relu", "relu", "softmax"]]
+elif k == 9:
+    [shapes, activations] = [[(50, 3072), (30, 50), (20, 30), (20, 20), (10, 20), (10, 10), (10, 10), (10, 10), (10, 10)], ["relu", "relu", "relu", "relu", "relu", "relu", "relu", "relu", "softmax"]]
+init_type = 'Xavier'
+
 
 # no. of iterations
 n_it = 1
 
 # choose sets and parameters to evaluate
-set2eval = [1]  
+set2eval = [1,2,3,4,5]  
 N_val = 1000
 GDparams2eval = [0]# np.arange(0,20)#[1]#,2,3]#[0, 1, 2, 3]     # choose with which paramter sets to run
 
@@ -69,8 +77,9 @@ n_batch = 100
 
 # cyclic learning rate?
 cyclic_lr = True
-n_s = 2*np.floor((len(set2eval)*10000-N_val)/n_batch)
-n_c = 4
+# n_s = 2*np.floor((len(set2eval)*10000-N_val)/n_batch)
+n_s = 5*45000/n_batch
+n_c = 2
 
 # calc no. of epochs
 n_epoch = int(2*(n_s/n_batch)*n_c)
@@ -87,7 +96,7 @@ GDparams = [[0,     .1],
             [1,     .001]]
 
 if cyclic_lr == True and search_grid == False:
-    GDparams = [[0.00711462,     [1e-5,   1e-1]],
+    GDparams = [[0.005,     [1e-5,   1e-1]],
                 [0,     [1e-5,   1e-1]],
                 [.01,    [1e-5,   1e-1]],
                 [1,     [1e-5,   1e-1]]]
@@ -182,7 +191,7 @@ data = {
 
 label_names = fb.LoadLabelNames()
 
-clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers)
+clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
 
 ###############################################################################
 """ Unittest classifier """
@@ -190,37 +199,34 @@ clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers)
     
 if __name__ == '__main__':            
     class Testing(unittest.TestCase):   
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers)
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
         
         def test_0_sizes(self):
-            np.testing.assert_equal(np.shape(self.clfr.X_train), (3072, 10000), err_msg='Training data')
-            np.testing.assert_equal(np.shape(self.clfr.Y_train), (10, 10000), err_msg='One-hot-encoded label-matrix')
-            np.testing.assert_equal(np.shape(self.clfr.y_train), (1,10000), err_msg='Labels')
-            np.testing.assert_equal(np.shape(self.clfr.W[0]), (self.clfr.M,3072), err_msg='W1')
-            np.testing.assert_equal(np.shape(self.clfr.W[1]), (10,self.clfr.M), err_msg='W2')
-            np.testing.assert_equal(np.shape(self.clfr.evaluate_classifier(X_train)[0]), (10,10000), err_msg='Output of softmax: Probability matrix P')
+            np.testing.assert_equal(np.shape(self.clfr.X_train), (3072, 10000*len(set2eval) - N_val), err_msg='Training data')
+            np.testing.assert_equal(np.shape(self.clfr.Y_train), (10, 10000*len(set2eval) - N_val), err_msg='One-hot-encoded label-matrix')
+            np.testing.assert_equal(np.shape(self.clfr.y_train), (1, 10000*len(set2eval) - N_val), err_msg='Labels')
+            for k in range(len(shapes)):
+                np.testing.assert_equal(np.shape(self.clfr.W[k]), shapes[k], err_msg='W' + str(k))
+            # np.testing.assert_equal(np.shape(self.clfr.evaluate_classifier(X_train)[0]), (10,10000), err_msg='Output of softmax: Probability matrix P')
             np.testing.assert_almost_equal(np.sum(self.clfr.softmax(X_train), axis=0), 1, decimal = 6, err_msg='Sum of probabilities != 1')                
             
         def test_1_gradients(self):
-            self.clfr.W[0] = self.clfr.W[0][:,:20]
+            self.clfr.W[0] = self.clfr.W[0][:,:5]
 #            self.clfr.W[1] = self.clfr.W[1][:,:20]
-            [grad_W, grad_b] = self.clfr.compute_gradients(self.clfr.X_train[:20,:100], self.clfr.Y_train[:,:100], lamda = 0)
-            [grad_W_num, grad_b_num] = self.clfr.compute_gradients_num(self.clfr.X_train[:20,:100], self.clfr.Y_train[:,:100], lamda = 0)
-            np.testing.assert_almost_equal(grad_W[0], grad_W_num[0], decimal = 6, err_msg='Gradient calulcation (num/ana): W1 matrix not almost equal up to 6 decimals')
-            np.testing.assert_almost_equal(grad_b[0], grad_b_num[0], decimal = 6, err_msg='Gradient calulcation (num/ana): b1 vector not almost equal up to 6 decimals')
-            np.testing.assert_almost_equal(grad_W[1], grad_W_num[1], decimal = 6, err_msg='Gradient calulcation (num/ana): W2 matrix not almost equal up to 6 decimals')
-            np.testing.assert_almost_equal(grad_b[1], grad_b_num[1], decimal = 6, err_msg='Gradient calulcation (num/ana): b2 vector not almost equal up to 6 decimals')
-            error_rel_W1_max = np.max(np.abs(grad_W[0] - grad_W_num[0])/np.maximum(1e-6, np.abs(grad_W[0]) + np.abs(grad_W_num[0])))
-            error_rel_b1_max = np.max(np.abs(grad_b[0] - grad_b_num[0])/np.maximum(1e-6, np.abs(grad_b[0]) + np.abs(grad_b_num[0])))
-            error_rel_W2_max = np.max(np.abs(grad_W[1] - grad_W_num[1])/np.maximum(1e-6, np.abs(grad_W[1]) + np.abs(grad_W_num[1])))
-            error_rel_b2_max = np.max(np.abs(grad_b[1] - grad_b_num[1])/np.maximum(1e-6, np.abs(grad_b[1]) + np.abs(grad_b_num[1])))
-            print('Maximum relative error between numerical and analytical calculation of W1: ' + str("{:.6f}".format(error_rel_W1_max*100)) + ' %')
-            print('Maximum relative error between numerical and analytical calculation of b1: ' + str("{:.6f}".format(error_rel_b1_max*100)) + ' %')
-            print('Maximum relative error between numerical and analytical calculation of W2: ' + str("{:.6f}".format(error_rel_W2_max*100)) + ' %')
-            print('Maximum relative error between numerical and analytical calculation of b2: ' + str("{:.6f}".format(error_rel_b2_max*100)) + ' %')
+            grad = self.clfr.compute_gradients(self.clfr.X_train[:5,:100], self.clfr.Y_train[:,:100], lamda = 0)
+            grad_num = self.clfr.compute_gradients_num(self.clfr.X_train[:5,:100], self.clfr.Y_train[:,:100], lamda = 0)
+            error_rel_W_max = []
+            error_rel_b_max = []
+            for k in range(len(shapes)):
+                np.testing.assert_almost_equal(grad['W'][k], grad_num['W'][k], decimal = 6, err_msg='Gradient calulcation (num/ana): W' + str(k) + ' matrix not almost equal up to 6 decimals')
+                np.testing.assert_almost_equal(grad['b'][k], grad_num['b'][k], decimal = 6, err_msg='Gradient calulcation (num/ana): b' + str(k) + ' vector not almost equal up to 6 decimals')
+                error_rel_W_max.append(np.max(np.abs(grad['W'][k] - grad_num['W'][k])/np.maximum(1e-6, np.abs(grad['W'][k]) + np.abs(grad_num['W'][k]))))
+                error_rel_b_max.append(np.max(np.abs(grad['b'][k] - grad_num['b'][k])/np.maximum(1e-6, np.abs(grad['b'][k]) + np.abs(grad_num['b'][k]))))           
+                print('Maximum relative error between numerical and analytical calculation of W' + str(k) + ': ' + str("{:.6f}".format(error_rel_W_max[k]*100)) + ' %')
+                print('Maximum relative error between numerical and analytical calculation of b' + str(k) + ': ' + str("{:.6f}".format(error_rel_b_max[k]*100)) + ' %')
                 
     # Unit testing
-    # unittest.TestLoader.sortTestMethodsUsing = None
+    unittest.TestLoader.sortTestMethodsUsing = None
     # unittest.main()
 
 ###############################################################################
@@ -234,7 +240,7 @@ for i in range(len(GDparams2eval)):
     np.random.seed(0)
     
     for n in range(n_it):
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers)
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
         [W_star, acc_train[:,i], acc_val[:,i], acc_test[:,i], L_train[:,i], J_train[:,i], L_val[:,i], J_val[:,i], eta_s[:,i]] = clfr.mini_batch_gd(
                                                                     X_train,
                                                                     Y_train,
