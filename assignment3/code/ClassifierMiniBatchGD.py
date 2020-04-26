@@ -209,19 +209,37 @@ class ClassifierMiniBatchGD():
                 np.exp(S - np.max(S, axis=0)).sum(axis=0)
         return P
      
-    def evaluate_classifier(self, P, S, l):    
+    def evaluate_classifier(self, X):    
         """ Scores learned classifier w.r.t. weight matrix and bias vector: log probability
         Args:
             X (np.ndarray): data matrix (D, N)
         Returns log probabilities of classification
         """
-        if self.activations[l] == 'relu':
-            S.append(self.relu(self.W[l]@S[l] + self.b[l]))     # activation function
-            # Shat.append(np.diag(mu[l]))
-            return [P, S]
-        elif self.activations[l] == 'softmax':
-            P = self.softmax(self.W[l]@S[l] + self.b[l])        # probability
-            return [P, S]
+        S = np.copy(X)
+        H = [np.copy(X)]
+        for l in range(0,self.k_num):
+            if self.activations[l] == 'relu':
+                
+                # S.append(self.relu(self.W[l]@S[l] + self.b[l]))     # activation function
+                # activation function applied on score  
+                s = self.W[l]@S + self.b[l]
+                if self.batch_norm:
+                    # calc mean along all values of s and variance along all dimensions of s
+                    mu = np.mean(s)
+                    var = np.var(s, axis = 1)
+                    # calc shat: shat = BatchNorm()
+                    shat = (1/np.sqrt(np.diag(var + np.finfo(np.float64).eps)))@(s - mu)
+                    # calc stilde: stilde = np.multiply(self.gamma[l], shat) + self.beta[l]
+                    stilde = np.multiply(self.gamma[l], shat) + self.beta[l]
+                    # apply relu to stile: S = self.relu(stilde)
+                    S = self.relu(stilde)
+                else:
+                    S = self.relu(s)
+                H.append(S) # intermediary activation function
+                # Shat.append(np.diag(mu[l]))
+            elif self.activations[l] == 'softmax':
+                P = self.softmax(self.W[l]@S + self.b[l])        # probability
+        return [P, H]
         
     """ Backward Path
     Fns
@@ -229,21 +247,29 @@ class ClassifierMiniBatchGD():
         compute_gradients_num()
     """   
     
-    def compute_gradL(self, X_batch, G, n_b, gradL, l):
+    def compute_gradL(self, G, H, n_b):
         """ Analytically computes the gradients of the loss w.r.t. the weight and bias parameters
-        Args:
-           
-            X_batch (np.ndarray): data batch matrix X/activation matrix H of previous layer (see lecture 5, slide 36, 2.)
+        Args:          
+            H       (np.ndarray): activation matrix H/data batch matrix X of previous layer (see lecture 5, slide 36, 2.)
             G       (np.ndarray): 
             n_b            (int): number of images in dataset
          Returns:
             gradL_W (np.ndarray): the gradient of the loss w.r.t. the weight parameter
             gradL_b (np.ndarray): the gradient of the loss w.r.t. the bias parameter
         """
-        gradL['W'][l] = (1/n_b) * G@np.transpose(X_batch[l])
-        gradL['b'][l] = (1/n_b) * G@np.ones(n_b)
-        G = np.transpose(self.W[l])@G
-        G = np.multiply(G, X_batch[l] > 0)
+        if self.batch_norm:
+            gradL = {'W': [], 'b': [], 'beta': [], 'gamma': []}
+        else:
+            gradL = {'W': [], 'b': []}
+        for l in range(self.k_num):
+            for key in self.params:
+                gradL[key].append([])
+        
+        for l in range(self.k_num-1, -1, -1):
+            gradL['W'][l] = (1/n_b) * G@np.transpose(H[l])
+            gradL['b'][l] = (1/n_b) * G@np.ones(n_b)
+            G = np.transpose(self.W[l])@G
+            G = np.multiply(G, H[l] > 0)
         return [gradL, G]
     
     def compute_gradients(self, X_batch, Y_batch, lamda): 
@@ -257,33 +283,35 @@ class ClassifierMiniBatchGD():
             grad_b (np.ndarray): the gradient of the bias parameter
         """
         n_b = X_batch.shape[1] # number of images in dataset
-        S = [X_batch]
-        P = []
+        # S = [X_batch]
+        # P = []
         
         # Forward path
-        for l in range(0,self.k_num):
-            [P, S] = self.evaluate_classifier(P, S, l)
+        # for l in range(0,self.k_num):
+        #     [P, S] = self.evaluate_classifier(P, S, l)
+        [P, H] = self.evaluate_classifier(X_batch)
         
         # Backward path
         G = -(Y_batch - P)
         
         # gradL_W = []
         # gradL_b = []
-        if self.batch_norm:
-            gradL = {'W': [], 'b': [], 'beta': [], 'gamma': []}
-        else:
-            gradL = {'W': [], 'b': []}
-        for l in range(self.k_num):
-            for key in self.params:
-                gradL[key].append([])
+        # if self.batch_norm:
+        #     gradL = {'W': [], 'b': [], 'beta': [], 'gamma': []}
+        # else:
+        #     gradL = {'W': [], 'b': []}
+        # for l in range(self.k_num):
+        #     for key in self.params:
+        #         gradL[key].append([])
         grad = {'W': [], 'b': []}
 
-        for l in range(self.k_num-1, -1, -1):
-            [gradL, G] = self.compute_gradL(S, G, n_b, gradL, l)  # gradients for layers 2 to k    
+        # for l in range(self.k_num-1, -1, -1):
+        [gradL, G] = self.compute_gradL(G, H, n_b)  # gradients for layers 2 to k    
+        for l in range(0,self.k_num):
             grad['W'].append(gradL['W'][l] + 2*lamda*self.W[l])
             grad['b'].append(gradL['b'][l])
-        grad['W'].reverse()
-        grad['b'].reverse()
+        # grad['W'].reverse()
+        # grad['b'].reverse()
         return grad
     
     def compute_gradients_num(self, X_batch, Y_batch, lamda, h=1e-6):
@@ -353,8 +381,8 @@ class ClassifierMiniBatchGD():
         # [P,_] = self.evaluate_classifier([], X, self.k_num-1)
         P = []
         X = [X]
-        for l in range(0,self.k_num):
-            [P, X] = self.evaluate_classifier(P, X, l)
+        # for l in range(0,self.k_num):
+        [P, X] = self.evaluate_classifier(X)
         l_cross_sum = np.sum(-Y*np.log(P))
         L =  1/n_b * l_cross_sum                        # total loss
         for i in range(len(self.W)):
@@ -374,8 +402,7 @@ class ClassifierMiniBatchGD():
         
         P = []
         X = [X]
-        for l in range(0,self.k_num):
-            [P, X] = self.evaluate_classifier(P, X, l)       
+        [P, X] = self.evaluate_classifier(X)       
         k_star = np.argmax(P, axis=0)               # label with highest probability
         acc = len(np.argwhere(k_star - y == 0)) / y.shape[1]
         return acc
