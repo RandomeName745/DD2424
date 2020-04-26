@@ -215,31 +215,33 @@ class ClassifierMiniBatchGD():
             X (np.ndarray): data matrix (D, N)
         Returns log probabilities of classification
         """
-        S = np.copy(X)
+        S = [np.copy(X)]
+        Shat = []
         H = [np.copy(X)]
         for l in range(0,self.k_num):
             if self.activations[l] == 'relu':
                 
                 # S.append(self.relu(self.W[l]@S[l] + self.b[l]))     # activation function
                 # activation function applied on score  
-                s = self.W[l]@S + self.b[l]
+                s = self.W[l]@H[l] + self.b[l]
                 if self.batch_norm:
                     # calc mean along all values of s and variance along all dimensions of s
                     mu = np.mean(s)
                     var = np.var(s, axis = 1)
                     # calc shat: shat = BatchNorm()
                     shat = (1/np.sqrt(np.diag(var + np.finfo(np.float64).eps)))@(s - mu)
+                    Shat.append(shat)
                     # calc stilde: stilde = np.multiply(self.gamma[l], shat) + self.beta[l]
                     stilde = np.multiply(self.gamma[l], shat) + self.beta[l]
-                    # apply relu to stile: S = self.relu(stilde)
-                    S = self.relu(stilde)
+                    # apply relu to stilde: S = self.relu(stilde)
+                    S.append(self.relu(stilde))
                 else:
-                    S = self.relu(s)
-                H.append(S) # intermediary activation function
+                    S.append(self.relu(s))
+                H.append(S[l+1]) # intermediary activation function
                 # Shat.append(np.diag(mu[l]))
             elif self.activations[l] == 'softmax':
-                P = self.softmax(self.W[l]@S + self.b[l])        # probability
-        return [P, H]
+                P = self.softmax(self.W[l]@H[l] + self.b[l])        # probability
+        return [P, H, S, Shat]
         
     """ Backward Path
     Fns
@@ -289,7 +291,7 @@ class ClassifierMiniBatchGD():
         # Forward path
         # for l in range(0,self.k_num):
         #     [P, S] = self.evaluate_classifier(P, S, l)
-        [P, H] = self.evaluate_classifier(X_batch)
+        [P, H, S, Shat] = self.evaluate_classifier(X_batch)
         
         # Backward path
         G = -(Y_batch - P)
@@ -379,10 +381,8 @@ class ClassifierMiniBatchGD():
         
         
         # [P,_] = self.evaluate_classifier([], X, self.k_num-1)
-        P = []
-        X = [X]
         # for l in range(0,self.k_num):
-        [P, X] = self.evaluate_classifier(X)
+        [P, _, _, _] = self.evaluate_classifier(X)
         l_cross_sum = np.sum(-Y*np.log(P))
         L =  1/n_b * l_cross_sum                        # total loss
         for i in range(len(self.W)):
@@ -400,9 +400,7 @@ class ClassifierMiniBatchGD():
             acc    (float): the accuracy of the classification on the given data matrix X
         """
         
-        P = []
-        X = [X]
-        [P, X] = self.evaluate_classifier(X)       
+        [P, _, _, _] = self.evaluate_classifier(X)       
         k_star = np.argmax(P, axis=0)               # label with highest probability
         acc = len(np.argwhere(k_star - y == 0)) / y.shape[1]
         return acc

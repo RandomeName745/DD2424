@@ -145,16 +145,16 @@ val_acc[:] = np.nan
 """ Load data and stack if wanted """
 ###############################################################################
 
-for s in range(len(set2eval)):
-    print('\r' + str(Name[s]) + '\n', flush=True, end='')
+for z in range(len(set2eval)):
+    print('\r' + str(Name[z]) + '\n', flush=True, end='')
            
     if len(set2eval) == 1:
-        [X_train,Y_train,y_train] = fb.LoadBatch('norm_data_batch_' + str(set2eval[s]) + '.mat')
+        [X_train,Y_train,y_train] = fb.LoadBatch('norm_data_batch_' + str(set2eval[z]) + '.mat')
     elif len(set2eval) > 1:
-        if s == 0:
-            [X_train,Y_train,y_train] = fb.LoadBatch('norm_data_batch_' + str(set2eval[s]) + '.mat')
+        if z == 0:
+            [X_train,Y_train,y_train] = fb.LoadBatch('norm_data_batch_' + str(set2eval[z]) + '.mat')
         else:
-            [X_train_set, Y_train_set, y_train_set] = fb.LoadBatch('norm_data_batch_' + str(set2eval[s]) + '.mat')
+            [X_train_set, Y_train_set, y_train_set] = fb.LoadBatch('norm_data_batch_' + str(set2eval[z]) + '.mat')
             X_train = np.append(X_train, X_train_set, axis = 1)
             Y_train = np.append(Y_train, Y_train_set, axis = 1)
             y_train = np.append(y_train, y_train_set, axis = 1)     
@@ -307,7 +307,7 @@ for i in range(len(GDparams2eval)):
                 'Accuracy',
                 savefig = export_results)    
         
-        fb.montage("weight", W_star[0], 10, 1, GDparams2eval[i], Name[s], label_names, savefig = export_results)
+        fb.montage("weight", W_star[0], 10, 1, GDparams2eval[i], Name[z], label_names, savefig = export_results)
         
 
 
