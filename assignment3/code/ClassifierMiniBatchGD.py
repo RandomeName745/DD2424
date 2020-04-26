@@ -305,7 +305,7 @@ class ClassifierMiniBatchGD():
         # for l in range(self.k_num):
         #     for key in self.params:
         #         gradL[key].append([])
-        grad = {'W': [], 'b': []}
+        grad = {'W': [], 'b': [], 'beta': [], 'gamma': []}
 
         # for l in range(self.k_num-1, -1, -1):
         [gradL, G] = self.compute_gradL(G, H, n_b)  # gradients for layers 2 to k    
