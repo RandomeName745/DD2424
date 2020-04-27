@@ -1,0 +1,47 @@
+k=9
+n_s =  2*45000/n_batch
+n_c = 2
+n_epoch = 36
+
+sigma = 1e-1
+
+	BN
+
+        Classification accuracy on training set: 63.78 +- 0.00 %
+        Classification accuracy on validation set: 52.38 +- 0.00 %
+        Classification accuracy on test set: 50.73 +- 0.00 %
+
+	woBN
+
+	Classification accuracy on training set: 10.06 +- 0.00 %
+        Classification accuracy on validation set: 9.50 +- 0.00 %
+        Classification accuracy on test set: 10.00 +- 0.00 %
+
+sigma = 1e-3
+
+	BN
+
+	Classification accuracy on training set: 60.19 +- 0.00 %
+        Classification accuracy on validation set: 49.68 +- 0.00 %
+        Classification accuracy on test set: 48.96 +- 0.00 %
+
+	woBN
+
+	Classification accuracy on training set: 10.06 +- 0.00 %
+        Classification accuracy on validation set: 9.50 +- 0.00 %
+        Classification accuracy on test set: 10.00 +- 0.00 %
+
+sigma = 1e-4
+
+	BN
+
+	Classification accuracy on training set: 57.73 +- 0.00 %
+        Classification accuracy on validation set: 48.56 +- 0.00 %
+        Classification accuracy on test set: 47.44 +- 0.00 %
+
+	woBN
+
+	
+	Classification accuracy on training set: 10.06 +- 0.00 %
+        Classification accuracy on validation set: 9.50 +- 0.00 %
+        Classification accuracy on test set: 10.00 +- 0.00 %

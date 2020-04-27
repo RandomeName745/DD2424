@@ -48,20 +48,19 @@ import unittest
 """
 # grid search
 search_grid = False
-z_min = -2.5
-z_max = -1.8
+z_min = -1.9
+z_max = -1.3
 
 # setting up network
-batch_norm = False
-M = 50
-k = 3
+batch_norm = True
+k = 9
 if k == 2:
     [shapes, activations] = [[(50, 3072), (10, 50)], ["relu", "softmax"]]
 elif k == 3:
     [shapes, activations] = [[(50, 3072), (50, 50), (10, 50)], ["relu", "relu", "softmax"]]
 elif k == 9:
     [shapes, activations] = [[(50, 3072), (30, 50), (20, 30), (20, 20), (10, 20), (10, 10), (10, 10), (10, 10), (10, 10)], ["relu", "relu", "relu", "relu", "relu", "relu", "relu", "relu", "softmax"]]
-init_type = 'Xavier'
+init_type = 'He'
 
 
 # no. of iterations
@@ -69,8 +68,8 @@ n_it = 1
 
 # choose sets and parameters to evaluate
 set2eval = [1,2,3,4,5]  
-N_val = 1000
-GDparams2eval = [0]# np.arange(0,20)#[1]#,2,3]#[0, 1, 2, 3]     # choose with which paramter sets to run
+N_val = 5000
+GDparams2eval = [0]#np.arange(0,20)#np.arange(0,20)#[1]#,2,3]#[0, 1, 2, 3]     # choose with which paramter sets to run
 
 # mini-batch gradient descent
 n_batch = 100
@@ -78,7 +77,10 @@ n_batch = 100
 # cyclic learning rate?
 cyclic_lr = True
 # n_s = 2*np.floor((len(set2eval)*10000-N_val)/n_batch)
-n_s = 5*45000/n_batch
+if len(set2eval) != 1:
+    n_s = 2*(10000*len(set2eval)-N_val)/n_batch
+else:
+    n_s = 5*(10000)/n_batch
 n_c = 2
 
 # calc no. of epochs
@@ -96,7 +98,7 @@ GDparams = [[0,     .1],
             [1,     .001]]
 
 if cyclic_lr == True and search_grid == False:
-    GDparams = [[0.005,     [1e-5,   1e-1]],
+    GDparams = [[0.0159299,     [1e-5,   1e-1]],
                 [0,     [1e-5,   1e-1]],
                 [.01,    [1e-5,   1e-1]],
                 [1,     [1e-5,   1e-1]]]
@@ -105,6 +107,7 @@ elif cyclic_lr == True and search_grid == True:
     for i in range(len(GDparams2eval)):
         z = z_min + (z_max - z_min)*np.random.random()
         GDparams.append([np.power(10,z), [1e-5, 1e-1]])
+        print(np.power(10,z))
     GDparams.sort()
 ###############################################################################
 """Pre-definitions"""
@@ -191,7 +194,7 @@ data = {
 
 label_names = fb.LoadLabelNames()
 
-clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
+clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, layers, init_type, batch_norm)
 
 ###############################################################################
 """ Unittest classifier """
@@ -199,7 +202,7 @@ clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batc
     
 if __name__ == '__main__':            
     class Testing(unittest.TestCase):   
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, layers, init_type, batch_norm)
         
         def test_0_sizes(self):
             np.testing.assert_equal(np.shape(self.clfr.X_train), (3072, 10000*len(set2eval) - N_val), err_msg='Training data')
@@ -211,23 +214,33 @@ if __name__ == '__main__':
             np.testing.assert_almost_equal(np.sum(self.clfr.softmax(X_train), axis=0), 1, decimal = 6, err_msg='Sum of probabilities != 1')                
             
         def test_1_gradients(self):
+            self.clfr.batch_is = 1
             self.clfr.W[0] = self.clfr.W[0][:,:5]
 #            self.clfr.W[1] = self.clfr.W[1][:,:20]
             grad = self.clfr.compute_gradients(self.clfr.X_train[:5,:100], self.clfr.Y_train[:,:100], lamda = 0)
             grad_num = self.clfr.compute_gradients_num(self.clfr.X_train[:5,:100], self.clfr.Y_train[:,:100], lamda = 0)
             error_rel_W_max = []
             error_rel_b_max = []
+            error_rel_beta_max = []
+            error_rel_gamma_max = []
             for k in range(len(shapes)):
-                np.testing.assert_almost_equal(grad['W'][k], grad_num['W'][k], decimal = 6, err_msg='Gradient calulcation (num/ana): W' + str(k) + ' matrix not almost equal up to 6 decimals')
-                np.testing.assert_almost_equal(grad['b'][k], grad_num['b'][k], decimal = 6, err_msg='Gradient calulcation (num/ana): b' + str(k) + ' vector not almost equal up to 6 decimals')
+                np.testing.assert_almost_equal(grad['b'][k], grad_num['b'][k], decimal = 4, err_msg='Gradient calulcation (num/ana): b' + str(k) + ' vector not almost equal up to 6 decimals')
+                np.testing.assert_almost_equal(grad['W'][k], grad_num['W'][k], decimal = 4, err_msg='Gradient calulcation (num/ana): W' + str(k) + ' matrix not almost equal up to 6 decimals')
                 error_rel_W_max.append(np.max(np.abs(grad['W'][k] - grad_num['W'][k])/np.maximum(1e-6, np.abs(grad['W'][k]) + np.abs(grad_num['W'][k]))))
                 error_rel_b_max.append(np.max(np.abs(grad['b'][k] - grad_num['b'][k])/np.maximum(1e-6, np.abs(grad['b'][k]) + np.abs(grad_num['b'][k]))))           
                 print('Maximum relative error between numerical and analytical calculation of W' + str(k) + ': ' + str("{:.6f}".format(error_rel_W_max[k]*100)) + ' %')
                 print('Maximum relative error between numerical and analytical calculation of b' + str(k) + ': ' + str("{:.6f}".format(error_rel_b_max[k]*100)) + ' %')
-                
+                if self.clfr.batch_norm:
+                    np.testing.assert_almost_equal(grad['beta'][k], grad_num['beta'][k], decimal = 4, err_msg='Gradient calulcation (num/ana): beta' + str(k) + ' vector not almost equal up to 6 decimals')
+                    np.testing.assert_almost_equal(grad['gamma'][k], grad_num['gamma'][k], decimal = 4, err_msg='Gradient calulcation (num/ana): gamma' + str(k) + ' vector not almost equal up to 6 decimals')                
+                    error_rel_beta_max.append(np.max(np.abs(grad['beta'][k] - grad_num['beta'][k])/np.maximum(1e-6, np.abs(grad['beta'][k]) + np.abs(grad_num['beta'][k]))))           
+                    error_rel_gamma_max.append(np.max(np.abs(grad['gamma'][k] - grad_num['gamma'][k])/np.maximum(1e-6, np.abs(grad['gamma'][k]) + np.abs(grad_num['gamma'][k]))))           
+                    print('Maximum relative error between numerical and analytical calculation of beta' + str(k) + ': ' + str("{:.6f}".format(error_rel_beta_max[k]*100)) + ' %')
+                    print('Maximum relative error between numerical and analytical calculation of gamma' + str(k) + ': ' + str("{:.6f}".format(error_rel_gamma_max[k]*100)) + ' %')
+
     # Unit testing
     unittest.TestLoader.sortTestMethodsUsing = None
-    # unittest.main()
+    unittest.main()
 
 ###############################################################################
 """ Conduct mini-batch gradient descent """
@@ -240,7 +253,7 @@ for i in range(len(GDparams2eval)):
     np.random.seed(0)
     
     for n in range(n_it):
-        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, M, layers, init_type, batch_norm)
+        clfr = CMBGD.ClassifierMiniBatchGD(data, label_names, layers, init_type, batch_norm)
         [W_star, acc_train[:,i], acc_val[:,i], acc_test[:,i], L_train[:,i], J_train[:,i], L_val[:,i], J_val[:,i], eta_s[:,i]] = clfr.mini_batch_gd(
                                                                     X_train,
                                                                     Y_train,
